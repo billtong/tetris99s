@@ -1,6 +1,14 @@
 {
-  "author": "Jet Li <jing.i.qin@icloud.com>",
-  "name": "yew-app",
+  "author": "estkey@outlook.com",
+  "maintainers": [
+    "estkey@outlook.com",
+    "bill.tong@mitel.com"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/billtong/tetris99s.git"
+  },
+  "name": "tetris99s-client",
   "version": "0.1.0",
   "scripts": {
     "build": "cross-env WASM_PACK_PROFILE=release parcel build static/index.html --public-url ./",
