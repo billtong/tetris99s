@@ -61,6 +61,11 @@ defmodule Coordinates do
     {0, 3, [{-1, 0}, {2, 0}, {-1, 2}, {2, -1}]}
   ]
 
+  @clear_line_checker_list 0..23
+                           |> Enum.map(fn y ->
+                             {y, Enum.map(0..9, &{&1, y}) |> Enum.into(MapSet.new())}
+                           end)
+
   @type tetrimino_leter :: :I | :J | :L | :O | :S | :T | :Z
 
   @typedoc """
@@ -224,13 +229,22 @@ defmodule Coordinates do
     as: :union
 
   @doc """
-  Clear coordinates in rows, and drop them according to their coordinates
+  Check which row is clearable and clear coordinates in rows, and drop others according to their coordinates
   """
-  def clear_line(coordinates, rows) do
-    coordinates
-    |> Enum.filter(fn {_x, y} -> y not in rows end)
-    |> Enum.map(fn {x, y} -> {x, y - Enum.count(rows, &(&1 < y))} end)
-    |> Enum.into(%MapSet{})
+  def check_and_clear_line(coordinates) do
+    Enum.flat_map(@clear_line_checker_list, fn {y, line_mapset} ->
+      if MapSet.subset?(line_mapset, coordinates), do: [y], else: []
+    end) |> IO.inspect()
+    |> case do
+      [] ->
+        coordinates
+
+      rows ->
+        Enum.flat_map(coordinates, fn {x, y} ->
+          if y not in rows, do: [{x, y - Enum.count(rows, &(&1 < y))}], else: []
+        end)
+        |> Enum.into(%MapSet{})
+    end
   end
 
   @doc """
