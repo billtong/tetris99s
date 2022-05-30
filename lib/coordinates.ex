@@ -12,6 +12,10 @@ defmodule Coordinates do
 
   - [Spawn Orientation and Location Source](https://tetris.fandom.com/wiki/SRS#Spawn_Orientation_and_Location)
   - :O can't rotate
+
+  `@clear_line_checker_list`
+
+  - list of each row's coordinates MapSet
   """
 
   @x_max 9
@@ -66,6 +70,9 @@ defmodule Coordinates do
                              {y, Enum.map(0..9, &{&1, y}) |> Enum.into(MapSet.new())}
                            end)
 
+  @typedoc """
+  The seven tetrominos types can be represented by seven letters.
+  """
   @type tetrimino_leter :: :I | :J | :L | :O | :S | :T | :Z
 
   @typedoc """
@@ -79,13 +86,13 @@ defmodule Coordinates do
   @type coordinate :: {integer(), integer()}
 
   @typedoc """
-  A MapSet that contains all coordinates of current tetrimino blocks
+  A MapSet that contains coordinates of tetrimino blocks
   """
   @type coordinate_mapset :: MapSet.t(coordinate())
 
-  for {block_type, {spawn_state, _, _, _}} <-
+  for {block_type, {spawn_state, _cr1_state, _cr2_state, _cr3_state}} <-
         @tetrimino_relative_coordinates do
-    def spawn_tetrimino(coordinates, unquote(block_type)) do
+    def spawn_tetrimino(coordinates, _block_type = unquote(block_type)) do
       with {:ok, tetrimino_coordinates} <-
              get_real_coordinates(unquote(spawn_state), @spawn_coordinate),
            {:ok, ^tetrimino_coordinates} <- check_bound(tetrimino_coordinates),
@@ -97,15 +104,24 @@ defmodule Coordinates do
     end
   end
 
+  @doc """
+  Spawn a new tetrimino block with given block type. It returns the coordinates of new tetrimino block if it's valid.
+  """
   @spec spawn_tetrimino(coordinate_mapset(), tetrimino_leter()) ::
           {:ok, MapSet.t(any)}
           | {:error, :coordinates_conflicted | :invalid_tetrimino_type | :out_of_bound}
-  def spawn_tetrimino(_, _) do
+  def spawn_tetrimino(_coordinates, _block_type) do
     {:error, :invalid_tetrimino_type}
   end
 
   for {block_type, states_tuple} <- @tetrimino_relative_coordinates, block_type !== :O do
-    def rotate_tetrimino(coordinates, {x, y}, unquote(block_type), from_state, to_state) do
+    def rotate_tetrimino(
+          coordinates,
+          _position = {x, y},
+          _block_type = unquote(block_type),
+          from_state,
+          to_state
+        ) do
       relative_coordiantes = elem(unquote(Macro.escape(states_tuple)), to_state)
 
       case get_real_coordinates(relative_coordiantes, {x, y}) do
@@ -130,26 +146,35 @@ defmodule Coordinates do
     end
   end
 
-  def rotate_tetrimino(_, _, :O, _, _) do
+  def rotate_tetrimino(_coordinates, _position, :O, _from_state, _to_state) do
     {:error, :no_rotate_for_o}
   end
 
-  @spec rotate_tetrimino(any, any, any, any, any) ::
+  @doc """
+  Rotate terimino and check all wall kick tests
+  """
+  @spec rotate_tetrimino(
+          coordinate_mapset(),
+          coordinate(),
+          tetrimino_leter(),
+          integer(),
+          integer()
+        ) ::
           {:error, :invalid_tetrimino_type | :no_rotate_for_o | :rotate_failed}
           | {:ok, MapSet.t(any) | MapSet.t({integer, integer})}
-  def rotate_tetrimino(_, _, _, _, _) do
+  def rotate_tetrimino(_coordinates, _position, _block_type, _from_state, _to_state) do
     {:error, :invalid_tetrimino_type}
   end
 
   for {from_state, to_state, tests} <- @wall_kick_rotation_jltsz do
-    def wall_kick_rotate(
-          coordinates,
-          tetrimino_coordinates,
-          block_type,
-          unquote(from_state),
-          unquote(to_state)
-        )
-        when block_type in [:J, :L, :T, :S, :Z] do
+    defp wall_kick_rotate(
+           coordinates,
+           tetrimino_coordinates,
+           block_type,
+           unquote(from_state),
+           unquote(to_state)
+         )
+         when block_type in [:J, :L, :T, :S, :Z] do
       wall_kick_rotate(
         coordinates,
         tetrimino_coordinates,
@@ -162,13 +187,13 @@ defmodule Coordinates do
   end
 
   for {from_state, to_state, tests} <- @wall_kick_rotation_i do
-    def wall_kick_rotate(
-          coordinates,
-          tetrimino_coordinates,
-          :I,
-          unquote(from_state),
-          unquote(to_state)
-        ) do
+    defp wall_kick_rotate(
+           coordinates,
+           tetrimino_coordinates,
+           :I,
+           unquote(from_state),
+           unquote(to_state)
+         ) do
       wall_kick_rotate(
         coordinates,
         tetrimino_coordinates,
@@ -180,11 +205,11 @@ defmodule Coordinates do
     end
   end
 
-  def wall_kick_rotate(_, _, :O, _, _) do
+  defp wall_kick_rotate(_coordinates, _tetrimino_coordinates, :O, _from, _to) do
     {:error, :no_rotate_for_o}
   end
 
-  def wall_kick_rotate(_coordinates, _tetrimino_coordinates, _block_type, _from, _to),
+  defp wall_kick_rotate(_coordinates, _tetrimino_coordinates, _block_type, _from, _to),
     do: {:error, :invalid_tetrimino_type}
 
   defp wall_kick_rotate(_coordinates, _tetrimino_coordinates, _block_type, _from, _to, []),
@@ -208,14 +233,14 @@ defmodule Coordinates do
   """
   @spec get_real_coordinates([coordinate()], coordinate()) ::
           {:error, :invalid_tetrimino_type} | {:ok, coordinate_mapset()}
-  def get_real_coordinates(relative_coordinates, {x, y}) do
+  def get_real_coordinates(relative_coordinates, _position = {x, y}) do
     real_coordinates =
       relative_coordinates |> Enum.map(fn {x1, y1} -> {x1 + x, y1 + y} end) |> MapSet.new()
 
     {:ok, real_coordinates}
   end
 
-  def get_real_coordinates(_, _) do
+  def get_real_coordinates(_relative_coordinates, _position) do
     {:error, :invalid_tetrimino_type}
   end
 
@@ -234,7 +259,8 @@ defmodule Coordinates do
   def check_and_clear_line(coordinates) do
     Enum.flat_map(@clear_line_checker_list, fn {y, line_mapset} ->
       if MapSet.subset?(line_mapset, coordinates), do: [y], else: []
-    end) |> IO.inspect()
+    end)
+    |> IO.inspect()
     |> case do
       [] ->
         coordinates
@@ -251,17 +277,17 @@ defmodule Coordinates do
   Add coordinates of garbage blocks, and raise all coordiantes
   """
   @spec dump_garbage(coordinate_mapset(), integer(), integer()) :: coordinate_mapset()
-  def dump_garbage(coordinates, num, hole) when num in 1..4 and hole in 0..9 do
-    Enum.map(coordinates, fn {x, y} -> {x, y + num} end)
+  def dump_garbage(coordinates, number, hole) when number in 1..4 and hole in 0..9 do
+    Enum.map(coordinates, fn {x, y} -> {x, y + number} end)
     |> Enum.into(%MapSet{})
-    |> MapSet.union(gen_garbage(num, hole))
+    |> MapSet.union(gen_garbage(number, hole))
   end
 
-  def dump_garbage(coordinates, _num, _hole), do: coordinates
+  def dump_garbage(coordinates, _number, _hole), do: coordinates
 
   @spec gen_garbage(integer(), integer()) :: coordinate_mapset()
-  defp gen_garbage(num, hole) do
-    for y <- 0..(num - 1), x <- 0..@x_max, x !== hole, into: %MapSet{}, do: {x, y}
+  defp gen_garbage(number, hole) do
+    for y <- 0..(number - 1), x <- 0..@x_max, x !== hole, into: %MapSet{}, do: {x, y}
   end
 
   @doc """
